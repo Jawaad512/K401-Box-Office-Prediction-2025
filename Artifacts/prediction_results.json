@@ -1,0 +1,7 @@
+{
+    "movie": "Avatar 3 (Fire & Ash)",
+    "prediction_scope": "Domestic Revenue (First 7 Days)",
+    "conservative_prediction_usd": 247103106.04861927,
+    "model_type": "CatBoost RMSE (Anchor)",
+    "note": "Predicts ~25% growth over Avatar 2 ($197M) -> Avatar 3 ($247M)"
+}
