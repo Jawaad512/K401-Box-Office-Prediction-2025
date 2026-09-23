@@ -2,7 +2,7 @@
     "movie": "Avatar: Fire and Ash",
     "release_date": "2025-12-19",
     "prediction_scope": "Domestic revenue, first 7 days (inflation-adjusted to 2025 USD)",
-    "generated_utc": "2026-09-23T14:05:50+00:00",
+    "generated_utc": "2026-09-23T15:29:47+00:00",
     "models": {
         "anchor_rmse": {
             "file": "catboost_conservative.cbm",
