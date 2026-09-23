@@ -14,26 +14,40 @@ The key objective was to predict the opening week aggregated revenue (domestic) 
 
 3. Modelling: Four Gradient Boosting Machines were pit alongside a baseline linear regression model to choose the best option for the prediction. Finally, CatBoost was chosen. Given the Avatar franchise's track record as a blockbuster, two versions of CatBoost were chosen - the first version was trained with a simple RMSE loss function, and the second was trained with a 90th percentile loss function to get closer to outliers.
 
-4. Final Prediction: **USD 211M** was submitted on 15 December 2025, as the midpoint of the two models (USD 202M from the RMSE anchor and USD 220M from the 90th percentile model).
+4. Final Prediction: **USD 211M** was submitted on 15 December 2025, as the midpoint of the two models (USD 202M from the RMSE anchor, USD 220M from the 90th percentile model).
 
 ## Correction notice
 
-The notebook as originally submitted could not be re-run to produce the numbers it reported. Two defects were responsible:
+The notebook as originally submitted could not be re-run to produce the numbers it reported. Four defects were responsible, two of them leakage:
 
-- `covid_impact` was set to `1` in the Avatar feature dictionary, for a film released in December 2025 — well outside the notebook's own COVID window of 2020-03-01 to 2021-12-31. This single binary flag is worth about **USD 51M** on the anchor prediction.
-- `cannibalization_score` was transferred between dataframes by assignment rather than by a key join. Pandas aligns on the index, and the receiving frame had been re-indexed and re-sorted in between, so the score landed on the wrong films.
+| # | Defect | Effect |
+|---|---|---|
+| 1 | `covid_impact` set to `1` in the Avatar input, for a film released in December 2025 — outside the notebook's own COVID window of 2020-03-01 to 2021-12-31 | +$51M on the anchor |
+| 2 | `cannibalization_score` transferred between frames by assignment rather than a key join. Pandas aligns on the index, and the receiving frame had been re-indexed and re-sorted in between, so the score landed on the wrong films | corrupted most rows |
+| 3 | `merge_asof(direction='nearest')` on the weekly market table, which can pull a film's market-momentum value from a week *after* it opened | **−$96M on the anchor** |
+| 4 | `perf_ratio` — the median 7-day revenue of a film's own release week, a median computed over the films released that week, including the film itself | −$9M on the anchor |
 
-Both are now fixed, and the notebook has been re-run end to end from a clean kernel. The corrected run produces:
+Defect 3 was the largest single effect in the project, and it was leakage rather than a typo. Fixing it also reversed the model tournament: CatBoost ranked third of four on top-decile precision and fold stability beforehand, and first on every metric afterward.
+
+With all four corrected, the notebook produces:
 
 | Model | Loss function | Prediction |
 |---|---|---|
-| Anchor | RMSE | USD 248.5M |
-| Ceiling | Quantile, alpha = 0.90 | USD 194.1M |
-| Midpoint | — | USD 221.3M |
+| Anchor | RMSE | **USD 143.1M** |
+| Ceiling | Quantile, alpha = 0.90 | **USD 176.9M** |
 
-Note that the 90th-percentile model came in *below* the RMSE anchor for this particular input. That is not extrapolation — 4,000 opening theaters sits inside the training range, whose maximum is 4,735 — and it is not the general behaviour of the pair, which has the quantile model above the anchor on 97.9% of the 607 test films. Avatar lands in the 2% where the ordering inverts, which makes the midpoint of the two difficult to defend as a point estimate.
+These are reported as a central estimate and an upper bound rather than averaged. The anchor is close to unbiased on the test set (log bias +0.028); the quantile model is deliberately biased upward (+0.628, a multiplier of about 1.87x). Averaging an unbiased estimator with one inflated by design does not estimate anything.
 
-The submitted figure (USD 211M) and the reproduced figure (USD 221.3M) are both kept on the record deliberately.
+*Avatar: Fire and Ash* opened to **USD 153.8M** over its first seven days. The corrected central estimate is about 7% below that; the submitted USD 211M was about 37% above it.
+
+That closeness should not be read as vindication, and the notebook does not read it that way. The model under-predicts the top decile of the test set by 37% — ordinary regression to the mean — and Avatar genuinely declined from its predecessor. The shrinkage happened to imitate franchise decay on this one film. Every franchise feature in the model (`franchise_hunger`, `sequel_parent_revenue`) is monotonically positive in past franchise success, so the model still has no way to represent a franchise declining. It would miss in the other direction on a franchise that grows. This is a sample of one.
+
+## Known limitations
+
+- **Preprocessing leakage.** `distributor_strength`, `release_tier`, `hype_cluster`, `cannibalization_score` and `market_momentum_lagged` are all fitted across the full dataset before the train/test split. The ablation in the notebook measures the cost at 0.009 R², so the inflation is small — but the architecture is wrong, and the fix is to fit them inside a pipeline on training folds only.
+- **`opening_theaters` is close to the answer, not a predictor.** It carries 54% of total feature importance, and on its own delivers 94% of the full model's R². Theater counts are set by the distributor days before release in response to tracking and pre-sales, so the model's dominant feature is effectively the studio's own demand forecast.
+- **Sample selection.** `dropna(subset=['rev_day_7_adj'])` leaves 2,940 of 6,706 films, skewed toward wide releases.
+- **Top-decile shrinkage.** The calibration table in the notebook shows the model predicting 37% below actual in the top decile and 55% above in the bottom.
 
 ## Reproducing
 
@@ -47,7 +61,7 @@ The submitted figure (USD 211M) and the reproduced figure (USD 221.3M) are both 
 | CatBoost / XGBoost / LightGBM | 1.2.10 / 3.4.1 / 4.7.0 |
 | matplotlib / seaborn | 3.11.2 / 0.13.2 |
 
-The run is deterministic: two independent executions produced identical predictions to the cent. Cell 123 writes an intermediate `dataset_refined.csv` into the working directory; it is regenerated on every run and is not committed.
+The run is deterministic: independent executions produce identical predictions to the cent. Cell 123 writes an intermediate `dataset_refined.csv` into the working directory; it is regenerated on every run and is not committed.
 
 Note that pandas 3.x is *not* supported — the cleaning cells rely on pre-copy-on-write assignment semantics.
 
